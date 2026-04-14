@@ -1,0 +1,7 @@
+[package]
+name = "ex3_provenance"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+iceoryx2 = "0.8.1"

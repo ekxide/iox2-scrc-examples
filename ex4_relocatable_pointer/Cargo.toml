@@ -1,0 +1,9 @@
+[package]
+name = "ex4_relocatable_pointer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+iceoryx2 = "0.8.1"
+iceoryx2-bb-container = "0.8.1"
+iceoryx2-bb-elementary = "0.8.1"

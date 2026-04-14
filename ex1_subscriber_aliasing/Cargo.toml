@@ -1,0 +1,7 @@
+[package]
+name = "ex1_subscriber_aliasing"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+iceoryx2 = "0.8.1"
