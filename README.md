@@ -47,7 +47,7 @@ While this example may look somewhat harmless from the user code, as the user ne
 
 This situation is similar to that of memory-mapped I/O, where contents of memory can just change without any action from the program itself. But it is particularly troublesome here, since a write at one address initiated by a program will directly impact memory at multiple other mapped addresses, violating the usual assumptions about aliasing.
 
-Additionally, it must be noted that for this interaction to play out correctly, the publisher and subscriber [need to *synchronize over atomics* placed in the shared memory segment](https://github.com/eclipse-iceoryx/iceoryx2/blob/main/iceoryx2-cal/src/zero_copy_connection/common.rs#L163). So it is *not* sufficient to use volatile access for performing the reads, as required for memory-mapped I/O, it must be possible to have full support for atomic memory operations.
+Additionally, it must be noted that for this interaction to play out correctly, the publisher and subscriber [need to *synchronize over atomics* placed in the shared memory segment](https://github.com/eclipse-iceoryx/iceoryx2/blob/main/iceoryx2-cal/src/zero_copy_connection/common.rs#L163). So it is *not* sufficient to use volatile access for performing the reads, as required for memory-mapped I/O, it must be possible to have full support for atomic memory operations. Fully volatile writes would also be a performance pessimization for this use case, as they prevent optimizing redundant writes to the same memory location.
 
 
 [Example #3 Provenance of objects in shared memory](ex3_provenance/src/main.rs)
