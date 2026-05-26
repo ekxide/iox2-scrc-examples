@@ -47,17 +47,17 @@ While this example may look somewhat harmless from the user code, as the user ne
 
 This situation is similar to that of memory-mapped I/O, where contents of memory can just change without any action from the program itself. But it is particularly troublesome here, since a write at one address initiated by a program will directly impact memory at multiple other mapped addresses, violating the usual assumptions about aliasing.
 
-Additionally, it must be noted that for this interaction to play out correctly, the publisher and subscriber [need to *synchronize over atomics* placed in the shared memory segment](https://github.com/eclipse-iceoryx/iceoryx2/blob/main/iceoryx2-cal/src/zero_copy_connection/common.rs#L163). So it is *not* sufficient to use volatile access for performing the reads, as required for memory-mapped I/O, it must be possible to have full support for atomic memory operations. Fully volatile writes would also be a performance pessimization for this use case, as they prevent optimizing redundant writes to the same memory location.
+Additionally, it must be noted that for this interaction to play out correctly, the publisher and subscriber [need to *synchronize over atomics* placed in the shared memory segment](https://github.com/eclipse-iceoryx/iceoryx2/blob/ff95bcdb9697b1eb9117394171b71ce952575181/iceoryx2-cal/src/zero_copy_connection/common.rs#L166). So it is *not* sufficient to use volatile access for performing the reads, as required for memory-mapped I/O, it must be possible to have full support for atomic memory operations. Fully volatile writes would also be a performance pessimization for this use case, as they prevent optimizing redundant writes to the same memory location.
 
 
 [Example #3 Provenance of objects in shared memory](ex3_provenance/src/main.rs)
 ---
 
-The [`ZeroCopySend` trait](https://github.com/eclipse-iceoryx/iceoryx2/blob/main/iceoryx2-bb/elementary-traits/src/zero_copy_send.rs#L32) is used as an opt-in to mark types as eligible to be send over iceoryx. The primary restriction imposed on payloads is that their memory layout must be suitably predictable, but otherwise Payloads can be arbitrary powerful iceoryx2 objects.
+The [`ZeroCopySend` trait](https://github.com/eclipse-iceoryx/iceoryx2/blob/ff95bcdb9697b1eb9117394171b71ce952575181/iceoryx2-bb/elementary-traits/src/zero_copy_send.rs#L32) is used as an opt-in to mark types as eligible to be send over iceoryx. The primary restriction imposed on payloads is that their memory layout must be suitably predictable, but otherwise Payloads can be arbitrary powerful iceoryx2 objects.
 
 In particular, we need to be able to support use cases as the one demonstrated in this example, where a publisher receives a payload and then directly calls a function on a payload type in shared memory. It is not acceptable for our clients to enforce an additional deserialization step, objects must be directly accessible from shared memory.
 
-This creates potential problems for provenance. The implementation simply maps a segment of memory into the process' address space and then [starts casting pointers to object pointers to start the lifetime of those objects](https://github.com/eclipse-iceoryx/iceoryx2/blob/main/iceoryx2-cal/src/dynamic_storage/posix_shared_memory.rs#L543).
+This creates potential problems for provenance. The implementation simply maps a segment of memory into the process' address space and then [starts casting pointers to object pointers to start the lifetime of those objects](https://github.com/eclipse-iceoryx/iceoryx2/blob/ff95bcdb9697b1eb9117394171b71ce952575181/iceoryx2-cal/src/dynamic_storage/posix_shared_memory.rs#L562).
 
 It must be ensured that:
 
@@ -76,7 +76,7 @@ Instead of using absolute addresses to identify object locations, relative offse
 
 Iceoryx implements the second option in its [`RelocatablePointer` type](https://github.com/eclipse-iceoryx/iceoryx2/blob/main/iceoryx2-bb/elementary/src/relocatable_ptr.rs). The advantage over the first option is that this pointer can be created without knowing the base address of the memory segment, which is only obtainable through the iceoryx2 backend, while a `RelocatablePointer` can be created by the user from just the addresses of the pointer object and its pointee.
 
-The `RelocatablePointer` is used throughout the implementation of iceoryx2, but this example shows a use of it that is the closest to the user-facing API surface: The `iceoryx2_bb_container` support library provides the [`FixedSizeQueue` type](https://github.com/eclipse-iceoryx/iceoryx2/blob/main/iceoryx2-bb/container/src/queue.rs) for use with iceoryx2 payloads. This type [uses a `RelocatablePointer` in its implementation](https://github.com/eclipse-iceoryx/iceoryx2/blob/main/iceoryx2-bb/container/src/queue.rs#L226), as can be easily observed by inspecting the queue object `q` in a debugger.
+The `RelocatablePointer` is used throughout the implementation of iceoryx2, but this example shows a use of it that is the closest to the user-facing API surface: The `iceoryx2_bb_container` support library provides the [`FixedSizeQueue` type](https://github.com/eclipse-iceoryx/iceoryx2/blob/main/iceoryx2-bb/container/src/queue.rs) for use with iceoryx2 payloads. This type [uses a `RelocatablePointer` in its implementation](https://github.com/eclipse-iceoryx/iceoryx2/blob/ff95bcdb9697b1eb9117394171b71ce952575181/iceoryx2-bb/container/src/queue.rs#L234), as can be easily observed by inspecting the queue object `q` in a debugger.
 
 The implementation of `RelocatablePointer` now again triggers an issue of pointer provenance. The order of operations for a receiving client are as follows:
 
@@ -86,7 +86,7 @@ The implementation of `RelocatablePointer` now again triggers an issue of pointe
 
 We believe this to be a different, more difficult issue than the provenance concerns from example #3, as it involves obtaining a reference for the pointee type from a reference to a `RelocatablePointer` *without* again going through the original base pointer of the address. So the `self` pointer of the `RelocatablePointer` object needs to preserve the necessary provenance so that it can be used to obtain the final pointer to the pointee.
 
-[The relevant operation in the implementation of `RelocatablePointer`](https://github.com/eclipse-iceoryx/iceoryx2/blob/main/iceoryx2-bb/elementary/src/relocatable_ptr.rs#L147).
+[The relevant operation in the implementation of `RelocatablePointer`](https://github.com/eclipse-iceoryx/iceoryx2/blob/ff95bcdb9697b1eb9117394171b71ce952575181/iceoryx2-bb/elementary/src/relocatable_ptr.rs#L147).
 
 
 Example #5 - Benign use of uninitialized memory
@@ -98,7 +98,7 @@ To correctly detect race conditions in such scenarios, processes observe the con
 
 When a process opens an existing shared memory segment, it will check for that bit pattern. If the pattern is not there, it means that the creating process is still in the process of setting up the memory, so the opening process will wait for the bit pattern to appear before continuing.
 
-The problem with this approach is that [the first read to check for that pattern may read uninitialized memory](https://github.com/eclipse-iceoryx/iceoryx2/blob/main/iceoryx2-cal/src/dynamic_storage/posix_shared_memory.rs#L235). We consider this a benign case of uninitialized read, as the reading process will only use it for the purpose of detecting this case. On platforms where mapped memory is zero initialized by the operating system it is also very much clear what the result of such an initialized read is going to be.
+The problem with this approach is that [the first read to check for that pattern may read uninitialized memory](https://github.com/eclipse-iceoryx/iceoryx2/blob/ff95bcdb9697b1eb9117394171b71ce952575181/iceoryx2-cal/src/dynamic_storage/posix_shared_memory.rs#L254). We consider this a benign case of uninitialized read, as the reading process will only use it for the purpose of detecting this case. On platforms where mapped memory is zero initialized by the operating system it is also very much clear what the result of such an initialized read is going to be.
 
 Still, technically, the process is reading uninitialized memory. This is also different from the case in example #3, as it not only reads memory that has not been initialized by the process that performs the read, but it has not been initialized by *anyone* except maybe the operating system.
 
@@ -117,7 +117,7 @@ Implementing [sequence locks](https://en.wikipedia.org/wiki/Seqlock), a prominen
 
 The problem is that the initial unsynchronized read may trigger a data race. The fact that the data will be discarded afterwards does not mitigate this.
 
-Iceoryx2 implements this pattern [in its `UnrestrictedAtomic` type](github.com/eclipse-iceoryx/iceoryx2/blob/main/iceoryx2-bb/lock-free/src/spmc/unrestricted_atomic.rs#L287) which is used extensively for internal synchronization.
+Iceoryx2 implements this pattern [in its `UnrestrictedAtomic` type](https://github.com/eclipse-iceoryx/iceoryx2/blob/ff95bcdb9697b1eb9117394171b71ce952575181/iceoryx2-bb/lock-free/src/spmc/unrestricted_atomic.rs#L282) which is used extensively for internal synchronization.
 
 
 Example #7 - Benign reads of padding bytes
