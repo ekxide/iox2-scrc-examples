@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
 
     let mut count = 1;
     loop {
-        count = count + 1;
+        count += 1;
         let mut sample = publisher.loan_uninit()?;
         let new_sample_addr = sample.payload().as_ptr().addr();
         sample.payload_mut().write(PayloadData { x: count * 100 });

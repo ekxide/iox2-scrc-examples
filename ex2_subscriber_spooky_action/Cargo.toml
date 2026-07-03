@@ -5,3 +5,12 @@ edition = "2024"
 
 [dependencies]
 iceoryx2 = "0.8.1"
+libc = "0.2"
+
+[[bin]]
+name = "ex2_iox2"
+path = "src/main.rs"
+
+[[bin]]
+name = "ex2_syscall"
+path = "src/syscall.rs"
