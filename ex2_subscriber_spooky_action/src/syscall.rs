@@ -4,6 +4,7 @@ use std::{
     time::Duration,
 };
 
+#[repr(C)]
 struct ShmMgmt {
     counter: AtomicUsize,
     allocator_cells: [MaybeUninit<PayloadData>; 1024],
