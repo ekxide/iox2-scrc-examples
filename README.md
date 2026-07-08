@@ -31,6 +31,17 @@ The whole point of iceoryx2 is to ensure that the access to this memory is safe.
 
 However, the *implementation* of iceoryx is very much depending on the fact that it can hold multiple references to this memory at the same time. Ensuring that it can do so without leaving Rust in an invalid state when transitioning out of an unsafe block within the iceoryx2 implementation is essential.
 
+### [Full Breakdown for Example #1](ex1_subscriber_aliasing/src/syscall.rs)
+
+This is a full breakdown of the syscalls that iceoryx2 performs on a POSIX system for Example #1. On Windows, the underlying syscalls will be different, but the expectations of the surrounding iceoryx2 code will be largely unchanged.
+
+* Each participant in the communication opens up a named shared memory segment using [`shm_open`](https://pubs.opengroup.org/onlinepubs/009695099/functions/shm_open.html). The call to `shm_open` returns a file descriptor for the shared memory segment. This call is probably not problematic.
+* Each participant maps the shared memory region using [`mmap`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/mmap.html). The call to `mmap` returns a mutable pointer to the underlying memory region. This establishes the problematic aliasing that is the heart of the example.
+* The publisher uses unsafe pointer arithmetic to obtain a pointer to the payload data in shared memory
+* The publisher uses an unsafe pointer write call to write the payload
+* Subscribers use unsafe pointer arithmetic to obtain a pointer to the payload in shared memory. The pointer values obtained by each participant will be different, even though they map to the same physical memory location.
+* Subscribers will use an unsafe cast to obtain a reference to the `PayloadData` object. At this point, the object needs to be within its lifetime from the perspective of the subscriber.
+
 
 [Example #2 - Spooky Action](ex2_subscriber_spooky_action/src/main.rs)
 ---
@@ -49,6 +60,16 @@ This situation is similar to that of memory-mapped I/O, where contents of memory
 
 Additionally, it must be noted that for this interaction to play out correctly, the publisher and subscriber [need to *synchronize over atomics* placed in the shared memory segment](https://github.com/eclipse-iceoryx/iceoryx2/blob/ff95bcdb9697b1eb9117394171b71ce952575181/iceoryx2-cal/src/zero_copy_connection/common.rs#L166). So it is *not* sufficient to use volatile access for performing the reads, as required for memory-mapped I/O, it must be possible to have full support for atomic memory operations. Fully volatile writes would also be a performance pessimization for this use case, as they prevent optimizing redundant writes to the same memory location.
 
+### [Full Breakdown for Example #2](ex2_subscriber_spooky_action/src/syscall.rs)
+
+This is a full breakdown of the syscalls that iceoryx2 performs on a POSIX system for Example #2. On Windows, the underlying syscalls will be different, but the expectations of the surrounding iceoryx2 code will be largely unchanged.
+
+* As in example #1, each participant uses calls to `shm_open` and `mmap` to map the shared memory segment.
+* As in example #1, subscribers and publishers use unsafe pointer arithmetic, unsafe pointer writes, and unsafe pointer dereferencing.
+* In addition to the code from example #1, this example includes the bookeeping data structure `ShmMgmt`, which is used for coordinating between publishers and subscribers. This is a highly simplified version of the management data structure that is used by iceoryx2.
+* In the example, the publisher writes to an atomic counter that indicates the currently active payload. Writes by the publisher synchronize with concurrent reads by the subscribers through this counter. All synchronization guarantees given by the memory model for shared atomics are expected to work in this scenario, even though the shared atomic resides at different addresses in memory.
+* Payload data is wrapped in a `MaybeUninit`. Subscribers use an unsafe `assume_init_ref` call to obtain references to the Payload data. The publisher guarantees that the object was initialized properly and synchronizes with the subscriber via the atomic counter. However, the initialized object was constructed by the publisher at a different address than the subscriber uses for reading (or, in the case of separate processes, was not created within the publisher program at all).
+* In the example, only a single writer ever modifies the memory. While this is also true for a simple publisher/subscriber scenario with iceoryx2, other messaging patterns may require multiple participants to write to the same memory location as well.
 
 [Example #3 Provenance of objects in shared memory](ex3_provenance/src/main.rs)
 ---
@@ -89,7 +110,7 @@ We believe this to be a different, more difficult issue than the provenance conc
 [The relevant operation in the implementation of `RelocatablePointer`](https://github.com/eclipse-iceoryx/iceoryx2/blob/ff95bcdb9697b1eb9117394171b71ce952575181/iceoryx2-bb/elementary/src/relocatable_ptr.rs#L147).
 
 
-Example #5 - Benign use of uninitialized memory
+[Example #5 - Benign use of uninitialized memory](ex5_uninitialized_memory/src/main.rs)
 ---
 
 Iceoryx2 does not require users to manually synchronize startup of different clients. This requires the implementation to correctly handle situations where multiple publishers or subscribers attempt to create a communication channel concurrently at startup.
