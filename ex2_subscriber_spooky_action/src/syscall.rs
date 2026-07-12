@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         })
     };
 
-    let shm_ref_publisher = unsafe { &mut *shm_base_publisher };
+    let shm_ref_publisher: &AtomicUsize = unsafe { &(*shm_base_publisher).counter };
 
     // open data segment of publisher
     let shm_fd_subscriber =
@@ -59,20 +59,28 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
         .cast()
     };
 
-    let shm_ref_subscriber = unsafe { &*shm_base_subscriber };
+    let shm_ref_subscriber: &AtomicUsize = unsafe { &(*shm_base_subscriber).counter };
 
     for n in 0..10 {
         let payload = PayloadData { x: n };
-        let write_idx = shm_ref_publisher.counter.load(Ordering::Relaxed);
-        shm_ref_publisher.allocator_cells[write_idx].write(payload);
-        shm_ref_publisher.counter.fetch_add(1, Ordering::Release);
+        let write_idx = shm_ref_publisher.load(Ordering::Relaxed);
+        unsafe {
+            let write_ptr = &raw mut (*shm_base_publisher).allocator_cells[write_idx];
+            // cast away the MaybeUninit
+            write_ptr.cast::<PayloadData>().write(payload);
+        }
+        shm_ref_publisher.fetch_add(1, Ordering::Release);
         println!("send payload: {payload:?}");
 
-        let read_idx = shm_ref_subscriber.counter.load(Ordering::Acquire) - 1;
+        let read_idx = shm_ref_subscriber.load(Ordering::Acquire) - 1;
+        let received = unsafe {
+            // pointer is non_null and valid
+            let read_pointer = &raw const (*shm_base_subscriber).allocator_cells[read_idx];
+            // was initialized by the writer since the counter was at that value
+            read_pointer.read().assume_init()
+        };
 
-        println!("subscriber received: {:?}", unsafe {
-            shm_ref_subscriber.allocator_cells[read_idx].assume_init_ref()
-        });
+        println!("subscriber received: {:?}", received);
 
         std::thread::sleep(Duration::from_millis(400));
     }
